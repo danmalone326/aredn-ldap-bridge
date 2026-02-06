@@ -6,6 +6,11 @@ This guide describes deployment and operational basics for the AREDN LDAP Bridge
 - `/opt/aredn-ldap-bridge` (repo checkout + venv)
 - `/etc/aredn-ldap-bridge/config.ini` (runtime configuration)
 
+## Create Service User
+```
+sudo useradd --system --home /opt/aredn-ldap-bridge --shell /usr/sbin/nologin aredn-ldap-bridge
+```
+
 ## Install Steps
 ```
 sudo mkdir -p /opt
@@ -18,15 +23,8 @@ cd /opt/aredn-ldap-bridge
 ### Python Version and Virtualenv
 This project assumes Python 3.x with a local virtualenv named `venv`.
 ```
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-## Create Service User
-```
-sudo useradd --system --home /opt/aredn-ldap-bridge --shell /usr/sbin/nologin aredn-ldap-bridge
-sudo chown -R aredn-ldap-bridge:aredn-ldap-bridge /opt/aredn-ldap-bridge
+sudo -u aredn-ldap-bridge -- python3 -m venv /opt/aredn-ldap-bridge/venv
+sudo -u aredn-ldap-bridge -H -- /opt/aredn-ldap-bridge/venv/bin/pip install -r requirements.txt
 ```
 
 ## Systemd Unit
