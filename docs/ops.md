@@ -46,6 +46,8 @@ sudo systemctl status aredn-ldap-bridge
 sudo journalctl -u aredn-ldap-bridge -f
 ```
 
+Note: The service uses `PYTHONPATH=/opt/aredn-ldap-bridge/src` to load the module without a package install.
+
 ## Firewall
 Allow inbound TCP to the configured LDAP port (default 389; dev 8389):
 ```
