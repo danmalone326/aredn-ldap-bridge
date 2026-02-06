@@ -1,7 +1,7 @@
-# AREDN SIP Directory Bridge (LDAP Facade)
+# AREDN Directory Bridge (LDAP Facade)
 
 ## Purpose
-Provide a lightweight LDAP v3 directory service for SIP IP phones on an AREDN mesh. The service translates LDAP Corporate Directory searches into lookups against AREDN advertised services and returns dialable entries whose telephone number is the service IP address.
+Provide a lightweight LDAP v3 directory service for IP phones on an AREDN mesh. The service translates LDAP Corporate Directory searches into lookups against AREDN advertised services and returns dialable entries whose telephone number is the service IP address.
 
 This document is written to be machine-readable and suitable for use by AI coding agents (e.g., CODEX) as an authoritative design specification.
 
@@ -9,7 +9,7 @@ This document is written to be machine-readable and suitable for use by AI codin
 
 ## High-Level Summary
 - Acts as an LDAP **facade** over AREDN `sysinfo?services=1`
-- Filters services to `protocol == "sip"`
+- Filters services to `protocol == "phone"`
 - Accepts **anonymous bind** and **simple bind with any credentials**
 - Ignores most LDAP semantics (base DN, schema strictness)
 - Returns `cn` (display) + `telephoneNumber` (IP address)
@@ -21,8 +21,8 @@ This document is written to be machine-readable and suitable for use by AI codin
 ## Scope
 ### In Scope
 - LDAP v3 bind + search
-- SIP-only directory entries derived from AREDN advertised services
-- Cisco SPA-series SIP phones (SPA-514G as reference)
+- phone entries derived from AREDN advertised services
+- Cisco SPA-series IP phones (SPA-514G as reference)
 - Stateless operation with in-memory cache
 
 ### Out of Scope
@@ -30,13 +30,13 @@ This document is written to be machine-readable and suitable for use by AI codin
 - LDAP modify/add/delete
 - Authentication or authorization
 - Persistent database storage
-- Non-SIP services
+- Non-phone services
 
 ---
 
 ## Terminology
 - **AREDN Service**: A service advertised by an AREDN node and returned via `sysinfo?services=1`
-- **Directory Entry**: One LDAP entry synthesized from one SIP AREDN service
+- **Directory Entry**: One LDAP entry synthesized from one phone AREDN service
 - **Upstream Node**: An AREDN node queried for mesh-wide service data
 
 ---
@@ -52,7 +52,7 @@ This document is written to be machine-readable and suitable for use by AI codin
   - `ip` (string)
   - `protocol` (string)
   - `link` (string, optional)
-- Filter strictly to `protocol == "sip"` (case-insensitive)
+- Filter strictly to `protocol == "phone"` (case-insensitive)
 
 ---
 
@@ -71,7 +71,7 @@ This document is written to be machine-readable and suitable for use by AI codin
 ### Search Behavior
 - Base DN is ignored (treated as informational only)
 - Scope may be ignored (treat as subtree)
-- Directory searched is always the in-memory SIP service cache
+- Directory searched is always the in-memory service cache
 - Maximum results per search enforced (default: 50)
 
 ### Supported Filter Types
@@ -114,7 +114,7 @@ Attribute names in filters are **ignored for semantics**; only asserted values m
 
 ### Distinguished Name (DN)
 ```
-uid=<uid>,ou=sip,dc=local,dc=mesh
+uid=<uid>,dc=local,dc=mesh
 ```
 
 Renaming a service produces a new DN (acceptable by design).
@@ -163,21 +163,19 @@ Renaming a service produces a new DN (acceptable by design).
 ## Configuration
 
 ### Required Config Parameters
-```yaml
-listen_address: 0.0.0.0
-listen_port: 389
-base_dn: dc=local,dc=mesh
-ou_dn: ou=sip,dc=local,dc=mesh
-upstream_nodes:
-  - node1.local.mesh
-  - node2.local.mesh
-upstream_timeout_seconds: 3
-cache_ttl_seconds: 60
-max_results: 50
-protocol_filter: sip
-allow_anonymous_bind: true
-allow_simple_bind_any_creds: true
-log_level: INFO
+```ini
+[aredn_ldap_bridge]
+listen_address = 0.0.0.0
+listen_port = 389
+base_dn = dc=local,dc=mesh
+upstream_nodes = node1.local.mesh, node2.local.mesh
+upstream_timeout_seconds = 3
+cache_ttl_seconds = 60
+max_results = 20
+protocol_filter = phone
+allow_anonymous_bind = true
+allow_simple_bind_any_creds = true
+log_level = INFO
 ```
 
 ---
@@ -275,4 +273,3 @@ log_level: INFO
 - No background polling
 - Small, readable, auditable codebase
 - Treat AREDN as the sole source of truth
-

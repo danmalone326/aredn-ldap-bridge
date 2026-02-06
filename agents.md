@@ -133,16 +133,16 @@ You are producing plain text that will later be styled by the CLI. Follow these 
 
 
 ## Project Context
-This repository contains the **AREDN SIP Directory Bridge**, a lightweight LDAP v3 service that exposes AREDN-advertised SIP services as a searchable Corporate Directory for SIP IP phones.
+This repository contains the **AREDN LDAP Directory Bridge**, a lightweight LDAP v3 service that exposes AREDN-advertised phone services as a searchable Corporate Directory for IP phones.
 
 The system:
 - Acts as an LDAP *facade* over AREDN `sysinfo?services=1`
-- Filters services to `protocol == "sip"`
+- Filters services to `protocol == "phone"`
 - Is intentionally forgiving of LDAP client behavior
 - Prioritizes interoperability and reliability over strict LDAP purity
 
 The authoritative design specification is in:
-- `AREDN_SIP_LDAP_Design_Spec.md`
+- `AREDN_LDAP_Design_Spec.md`
 
 Agents MUST treat that document as the source of truth.
 
@@ -162,7 +162,7 @@ Agents MUST adhere to the following principles:
    No manual entries, no persistent database, no shadow state.
 
 4. **Simplicity Over Completeness**  
-   Implement only what is required for SIP phone directory operation.
+   Implement only what is required for phone directory operation.
 
 5. **Small-Hardware Friendly**  
    Assume Raspberry Pi–class resources.
@@ -290,7 +290,7 @@ Tests MUST NOT:
 
 Agents MUST:
 
-- Avoid scope creep beyond SIP directory functionality
+- Avoid scope creep beyond LDAP directory functionality
 - Flag any deviation from the design spec
 - Ask for clarification when behavior is ambiguous
 
@@ -329,4 +329,3 @@ This project prioritizes **reliability, predictability, and interoperability** o
 
 When in doubt:
 > Make it simpler, more tolerant, and easier to debug.
-

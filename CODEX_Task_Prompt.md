@@ -1,13 +1,13 @@
-# CODEX Task Prompt — AREDN SIP LDAP Bridge
+# CODEX Task Prompt — AREDN LDAP Bridge
 
 This prompt is intended to be given verbatim to a CODEX (or similar) autonomous coding agent.
 
-The agent MUST follow `agents.md` and `AREDN_SIP_LDAP_Design_Spec.md` as authoritative constraints.
+The agent MUST follow `agents.md` and `AREDN_LDAP_Design_Spec.md` as authoritative constraints.
 
 ---
 
 ## Role
-You are an AI software engineer working on the **AREDN SIP Directory Bridge** project.
+You are an AI software engineer working on the **AREDN LDAP Directory Bridge** project.
 
 Your task is to implement the project incrementally, milestone by milestone, without deviating from the design specification or introducing unnecessary complexity.
 
@@ -18,11 +18,11 @@ Your task is to implement the project incrementally, milestone by milestone, wit
 You MUST read and adhere to the following files before writing code:
 
 1. `agents.md`
-2. `AREDN_SIP_LDAP_Design_Spec.md`
+2. `AREDN_LDAP_Design_Spec.md`
 3. `Milestone_Definition_of_Done.md`
 
 If there is any conflict:
-- `AREDN_SIP_LDAP_Design_Spec.md` wins
+- `AREDN_LDAP_Design_Spec.md` wins
 - then `agents.md`
 - then this prompt
 
@@ -35,7 +35,7 @@ If there is any conflict:
 - DO NOT introduce background polling or timers
 - DO NOT use OpenLDAP or slapd
 - DO NOT persist data to disk or a database
-- DO NOT invent non-SIP directory entries
+- DO NOT invent directory entries
 
 Fail open when client behavior is ambiguous.
 
@@ -75,7 +75,7 @@ Create a minimal LDAP v3 server that accepts binds and returns static directory 
 ### Required Behavior
 - Service starts via:
   ```
-  python -m aredn_ldap_bridge --config config/config.example.yaml
+  python -m aredn_ldap_bridge --config config/config.example.ini
   ```
 - Search returns entries with:
   - `uid`
@@ -95,11 +95,11 @@ STOP. Do not proceed until explicitly instructed.
 ## Milestone 2 — AREDN Integration + Lazy Cache
 
 ### Objective
-Replace static data with live SIP services fetched from AREDN, using a lazy TTL cache.
+Replace static data with live phone services fetched from AREDN, using a lazy TTL cache.
 
 ### Scope
 - Implement upstream fetch from ordered node list
-- Filter services to `protocol == "sip"`
+- Filter services to `protocol == "phone"`
 - Implement in-memory TTL cache (default 60s)
 - Refresh cache ONLY on LDAP search
 - Implement last-known-good fallback
@@ -149,7 +149,7 @@ Ensure Cisco SPA-514G Corporate Directory works end-to-end.
 - Document SPA configuration
 
 ### Acceptance Check
-- Phone search returns SIP entries
+- Phone search returns phone entries
 - Selecting entry dials IP from `telephoneNumber`
 
 STOP after acceptance.

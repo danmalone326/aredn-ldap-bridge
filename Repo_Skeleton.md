@@ -1,16 +1,16 @@
 # Repository Skeleton
 
-This document defines the recommended repository layout and initial file templates for the **AREDN SIP Directory Bridge**.
+This document defines the recommended repository layout and initial file templates for the **AREDN LDAP Directory Bridge**.
 
-Goal: a small, testable Python service with clear module boundaries aligned with `AREDN_SIP_LDAP_Design_Spec.md` and `agents.md`.
+Goal: a small, testable Python service with clear module boundaries aligned with `AREDN_LDAP_Design_Spec.md` and `agents.md`.
 
 ---
 
 ## Directory Tree
 
 ```
-aredn-sip-ldap-bridge/
-  AREDN_SIP_LDAP_Design_Spec.md
+aredn-ldap-bridge/
+  AREDN_LDAP_Design_Spec.md
   agents.md
   README.md
   LICENSE
@@ -19,7 +19,7 @@ aredn-sip-ldap-bridge/
   .editorconfig
 
   config/
-    config.example.yaml
+    config.example.ini
 
   src/
     aredn_ldap_bridge/
@@ -68,7 +68,7 @@ aredn-sip-ldap-bridge/
 ## File Roles (What Goes Where)
 
 ### Root
-- `AREDN_SIP_LDAP_Design_Spec.md`: authoritative system spec
+- `AREDN_LDAP_Design_Spec.md`: authoritative system spec
 - `agents.md`: agent rules / constraints
 - `README.md`: install, run, configure, troubleshoot
 - `pyproject.toml`: packaging, dependencies, tooling
@@ -116,18 +116,18 @@ Suggested module responsibilities:
 - Troubleshooting
 - Development
 
-### `config/config.example.yaml`
+### `config/config.example.ini`
 Include:
 - `listen_address`, `listen_port`
-- `base_dn`, `ou_dn`
+- `base_dn`
 - `upstream_nodes` (ordered)
 - `upstream_timeout_seconds`
 - `cache_ttl_seconds`
 - `max_results`
-- `protocol_filter: sip`
+- `protocol_filter: phone`
 
 ### `deploy/systemd/aredn-ldap-bridge.service`
-- ExecStart: `python -m aredn_ldap_bridge --config /etc/aredn-ldap-bridge/config.yaml`
+- ExecStart: `python -m aredn_ldap_bridge --config /etc/aredn-ldap-bridge/config.ini`
 - Restart: on-failure
 - User: dedicated service user
 
@@ -152,4 +152,3 @@ Include:
 After creating this skeleton in the repo, proceed to:
 - Add the Definition-of-Done checklists per milestone
 - Add a CODEX task prompt to build Milestone 1 and 2 incrementally
-

@@ -1,0 +1,17 @@
+[Unit]
+Description=AREDN LDAP Bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aredn-ldap-bridge
+Group=aredn-ldap-bridge
+WorkingDirectory=/opt/aredn-ldap-bridge
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/aredn-ldap-bridge/venv/bin/python -m aredn_ldap_bridge
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

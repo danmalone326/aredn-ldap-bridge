@@ -46,5 +46,8 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Local config
+config.ini
+
 # Notebooks
 .ipynb_checkpoints/

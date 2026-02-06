@@ -1,6 +1,6 @@
 # Milestone Definition of Done (DoD)
 
-This document provides **agent-friendly** checklists and acceptance criteria for each milestone in the AREDN SIP Directory Bridge project.
+This document provides **agent-friendly** checklists and acceptance criteria for each milestone in the AREDN LDAP Directory Bridge project.
 
 Each milestone section includes:
 - Deliverables
@@ -40,7 +40,7 @@ Each milestone section includes:
 - Search returns at least one entry with required attributes
 
 ### Validation Steps
-- `ldapsearch -x -H ldap://127.0.0.1:389 -b 'ou=sip,dc=local,dc=mesh' '(cn=*)'`
+- `ldapsearch -x -H ldap://127.0.0.1:389 -b 'dc=local,dc=mesh' '(cn=*)'`
 
 ---
 
@@ -48,7 +48,7 @@ Each milestone section includes:
 
 ### Deliverables
 - Upstream fetch module querying ordered node list
-- SIP-only service filtering
+- phone service filtering
 - Lazy, TTL-based in-memory cache
 - Last-known-good cache fallback
 
@@ -90,7 +90,7 @@ Each milestone section includes:
 
 ### Acceptance Criteria
 - Phone successfully binds to LDAP service
-- Directory search returns SIP entries
+- Directory search returns phone entries
 - Selecting entry dials IP from `telephoneNumber`
 
 ### Validation Steps
