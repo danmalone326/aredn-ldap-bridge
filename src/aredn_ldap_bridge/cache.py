@@ -47,6 +47,13 @@ class LazyCache:
 
         return list(refreshed)
 
+    def reload_settings(self, upstream: UpstreamClient, base_dn: str, ttl_seconds: int) -> None:
+        with self._lock:
+            self._upstream = upstream
+            self._base_dn = base_dn
+            self._ttl_seconds = max(1, int(ttl_seconds))
+            self._last_refresh = None
+
     def _is_fresh_locked(self) -> bool:
         if self._last_refresh is None:
             return False

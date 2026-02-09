@@ -49,6 +49,13 @@ sudo journalctl -u aredn-ldap-bridge -f
 Note: The service uses `PYTHONPATH=/opt/aredn-ldap-bridge/src` to load the module without a package install.
 The unit grants `CAP_NET_BIND_SERVICE` so the non-root service can bind to port 389.
 
+## Reload Configuration
+The service supports SIGHUP to reload config and expire the cache:
+```
+sudo systemctl kill -s HUP aredn-ldap-bridge
+```
+Note: Changing `listen_address` or `listen_port` requires a full restart.
+
 ## Firewall
 Allow inbound TCP to the configured LDAP port (default 389; dev 8389):
 ```
