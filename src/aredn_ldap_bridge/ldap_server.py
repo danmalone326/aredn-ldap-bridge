@@ -13,6 +13,7 @@ from .ldap_protocol import (
     build_search_result_entry,
     decode_ldap_message,
     encode_ldap_message,
+    peek_ldap_op_tag,
 )
 from .cache import LazyCache
 from .matcher import filter_entries
@@ -75,8 +76,9 @@ def _make_handler(config: Config, cache: LazyCache):
                         message, rest = decode_ldap_message(buffer)
                     except SubstrateUnderrunError:
                         break
-                    except Exception:
-                        logger.exception("Failed to decode LDAP message")
+                    except Exception as exc:
+                        op_tag = peek_ldap_op_tag(buffer)
+                        logger.warning("Failed to decode LDAP message op_tag=%s err=%s", op_tag, exc)
                         return
 
                     buffer = rest
@@ -133,6 +135,10 @@ def _make_handler(config: Config, cache: LazyCache):
 
                 done_msg = build_search_result_done(message_id=message_id, result_code=0)
                 self.request.sendall(encode_ldap_message(done_msg))
+                return
+
+            if op_name == "unbindRequest":
+                logger.info("Unbind request from %s", self.client_address[0])
                 return
 
             logger.info("Ignoring unsupported protocol op=%s", op_name)

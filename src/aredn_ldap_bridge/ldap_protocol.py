@@ -351,6 +351,9 @@ class ProtocolOp(univ.Choice):
         namedtype.NamedType("searchRequest", SearchRequestMessage()),
         namedtype.NamedType("searchResEntry", SearchResultEntryMessage()),
         namedtype.NamedType("searchResDone", SearchResultDoneMessage()),
+        namedtype.NamedType("unbindRequest", univ.Null().subtype(
+            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 2)
+        )),
     )
 
 
@@ -406,6 +409,9 @@ class ProtocolOpLoose(univ.Choice):
         namedtype.NamedType("searchRequest", SearchRequestLooseMessage()),
         namedtype.NamedType("searchResEntry", SearchResultEntryMessage()),
         namedtype.NamedType("searchResDone", SearchResultDoneMessage()),
+        namedtype.NamedType("unbindRequest", univ.Null().subtype(
+            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 2)
+        )),
     )
 
 
@@ -418,6 +424,30 @@ class LDAPMessageLoose(univ.Sequence):
 
 def decode_ldap_message(data: bytes):
     return decoder.decode(data, asn1Spec=LDAPMessageLoose())
+
+
+def peek_ldap_op_tag(data: bytes) -> str:
+    if len(data) < 2:
+        return "unknown"
+    _, length_len = _ber_length_len(data, 1)
+    start = 1 + length_len
+    if start >= len(data):
+        return "unknown"
+    tag_byte = data[start]
+    tag_class = (tag_byte & 0xC0) >> 6
+    tag_form = (tag_byte & 0x20) >> 5
+    tag_number = tag_byte & 0x1F
+    return f"{tag_class}:{tag_form}:{tag_number}"
+
+
+def _ber_length_len(data: bytes, offset: int) -> tuple[int, int]:
+    if offset >= len(data):
+        return 0, 0
+    first = data[offset]
+    if first & 0x80 == 0:
+        return first, 1
+    num_len_bytes = first & 0x7F
+    return 0, 1 + num_len_bytes
 
 
 def encode_ldap_message(message: LDAPMessage) -> bytes:
