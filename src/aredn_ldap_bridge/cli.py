@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import logging
 import signal
+import threading
 from typing import Optional
 
 from .config import load_config
@@ -56,7 +57,7 @@ def main() -> None:
 
     def _handle_signal(signum, frame) -> None:
         logger.info("Received signal %s; shutting down", signum)
-        server.shutdown()
+        threading.Thread(target=server.shutdown, daemon=True).start()
 
     def _handle_reload(signum, frame) -> None:
         logger.info("Received signal %s; reloading config", signum)
