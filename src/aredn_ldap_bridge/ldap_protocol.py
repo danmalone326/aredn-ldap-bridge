@@ -344,6 +344,70 @@ class SearchResultDoneMessage(SearchResultDone):
     )
 
 
+class LDAPResult(univ.Sequence):
+    componentType = namedtype.NamedTypes(
+        namedtype.NamedType("resultCode", ResultCode()),
+        namedtype.NamedType("matchedDN", LDAPDN()),
+        namedtype.NamedType("diagnosticMessage", LDAPString()),
+    )
+
+
+class ModifyResponseMessage(LDAPResult):
+    tagSet = LDAPResult.tagSet.tagImplicitly(
+        tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 7)
+    )
+
+
+class AddResponseMessage(LDAPResult):
+    tagSet = LDAPResult.tagSet.tagImplicitly(
+        tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 9)
+    )
+
+
+class DelResponseMessage(LDAPResult):
+    tagSet = LDAPResult.tagSet.tagImplicitly(
+        tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 11)
+    )
+
+
+class ModifyDNResponseMessage(LDAPResult):
+    tagSet = LDAPResult.tagSet.tagImplicitly(
+        tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 13)
+    )
+
+
+class CompareResponseMessage(LDAPResult):
+    tagSet = LDAPResult.tagSet.tagImplicitly(
+        tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 15)
+    )
+
+
+class ExtendedResponse(univ.Sequence):
+    componentType = namedtype.NamedTypes(
+        namedtype.NamedType("resultCode", ResultCode()),
+        namedtype.NamedType("matchedDN", LDAPDN()),
+        namedtype.NamedType("diagnosticMessage", LDAPString()),
+        namedtype.OptionalNamedType(
+            "responseName",
+            LDAPString().subtype(
+                implicitTag=tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 10)
+            ),
+        ),
+        namedtype.OptionalNamedType(
+            "responseValue",
+            univ.OctetString().subtype(
+                implicitTag=tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 11)
+            ),
+        ),
+    )
+
+
+class ExtendedResponseMessage(ExtendedResponse):
+    tagSet = ExtendedResponse.tagSet.tagImplicitly(
+        tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 24)
+    )
+
+
 class ProtocolOp(univ.Choice):
     componentType = namedtype.NamedTypes(
         namedtype.NamedType("bindRequest", BindRequestMessage()),
@@ -351,8 +415,35 @@ class ProtocolOp(univ.Choice):
         namedtype.NamedType("searchRequest", SearchRequestMessage()),
         namedtype.NamedType("searchResEntry", SearchResultEntryMessage()),
         namedtype.NamedType("searchResDone", SearchResultDoneMessage()),
+        namedtype.NamedType("modifyResponse", ModifyResponseMessage()),
+        namedtype.NamedType("addResponse", AddResponseMessage()),
+        namedtype.NamedType("delResponse", DelResponseMessage()),
+        namedtype.NamedType("modifyDNResponse", ModifyDNResponseMessage()),
+        namedtype.NamedType("compareResponse", CompareResponseMessage()),
+        namedtype.NamedType("extendedResponse", ExtendedResponseMessage()),
         namedtype.NamedType("unbindRequest", univ.Null().subtype(
             implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 2)
+        )),
+        namedtype.NamedType("extendedRequest", univ.Any().subtype(
+            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 23)
+        )),
+        namedtype.NamedType("modifyRequest", univ.Any().subtype(
+            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 6)
+        )),
+        namedtype.NamedType("addRequest", univ.Any().subtype(
+            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 8)
+        )),
+        namedtype.NamedType("delRequest", univ.Any().subtype(
+            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 10)
+        )),
+        namedtype.NamedType("modifyDNRequest", univ.Any().subtype(
+            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 12)
+        )),
+        namedtype.NamedType("compareRequest", univ.Any().subtype(
+            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 14)
+        )),
+        namedtype.NamedType("abandonRequest", univ.Any().subtype(
+            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 16)
         )),
     )
 
@@ -409,8 +500,35 @@ class ProtocolOpLoose(univ.Choice):
         namedtype.NamedType("searchRequest", SearchRequestLooseMessage()),
         namedtype.NamedType("searchResEntry", SearchResultEntryMessage()),
         namedtype.NamedType("searchResDone", SearchResultDoneMessage()),
+        namedtype.NamedType("modifyResponse", ModifyResponseMessage()),
+        namedtype.NamedType("addResponse", AddResponseMessage()),
+        namedtype.NamedType("delResponse", DelResponseMessage()),
+        namedtype.NamedType("modifyDNResponse", ModifyDNResponseMessage()),
+        namedtype.NamedType("compareResponse", CompareResponseMessage()),
+        namedtype.NamedType("extendedResponse", ExtendedResponseMessage()),
         namedtype.NamedType("unbindRequest", univ.Null().subtype(
             implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 2)
+        )),
+        namedtype.NamedType("extendedRequest", univ.Any().subtype(
+            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 23)
+        )),
+        namedtype.NamedType("modifyRequest", univ.Any().subtype(
+            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 6)
+        )),
+        namedtype.NamedType("addRequest", univ.Any().subtype(
+            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 8)
+        )),
+        namedtype.NamedType("delRequest", univ.Any().subtype(
+            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 10)
+        )),
+        namedtype.NamedType("modifyDNRequest", univ.Any().subtype(
+            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 12)
+        )),
+        namedtype.NamedType("compareRequest", univ.Any().subtype(
+            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 14)
+        )),
+        namedtype.NamedType("abandonRequest", univ.Any().subtype(
+            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 16)
         )),
     )
 
@@ -499,3 +617,27 @@ def build_search_result_done(message_id: int, result_code: int = 0) -> LDAPMessa
     done.setComponentByName("matchedDN", b"")
     done.setComponentByName("diagnosticMessage", b"")
     return make_ldap_message(message_id, "searchResDone", done)
+
+
+def build_extended_response(message_id: int, result_code: int) -> LDAPMessage:
+    response = ExtendedResponseMessage()
+    response.setComponentByName("resultCode", result_code)
+    response.setComponentByName("matchedDN", b"")
+    response.setComponentByName("diagnosticMessage", b"")
+    return make_ldap_message(message_id, "extendedResponse", response)
+
+
+def build_ldap_result_response(message_id: int, op_name: str, result_code: int) -> LDAPMessage:
+    response_map = {
+        "modifyResponse": ModifyResponseMessage,
+        "addResponse": AddResponseMessage,
+        "delResponse": DelResponseMessage,
+        "modifyDNResponse": ModifyDNResponseMessage,
+        "compareResponse": CompareResponseMessage,
+    }
+    response_cls = response_map[op_name]
+    response = response_cls()
+    response.setComponentByName("resultCode", result_code)
+    response.setComponentByName("matchedDN", b"")
+    response.setComponentByName("diagnosticMessage", b"")
+    return make_ldap_message(message_id, op_name, response)

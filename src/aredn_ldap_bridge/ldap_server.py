@@ -9,6 +9,8 @@ from pyasn1.error import SubstrateUnderrunError
 from .config import Config
 from .ldap_protocol import (
     build_bind_response,
+    build_extended_response,
+    build_ldap_result_response,
     build_search_result_done,
     build_search_result_entry,
     decode_ldap_message,
@@ -139,6 +141,29 @@ def _make_handler(config: Config, cache: LazyCache):
 
             if op_name == "unbindRequest":
                 logger.info("Unbind request from %s", self.client_address[0])
+                return
+
+            if op_name == "extendedRequest":
+                logger.info("Extended request from %s (responding not authorized)", self.client_address[0])
+                response = build_extended_response(message_id, result_code=50)
+                self.request.sendall(encode_ldap_message(response))
+                return
+
+            if op_name in {"modifyRequest", "addRequest", "delRequest", "modifyDNRequest", "compareRequest"}:
+                response_name = {
+                    "modifyRequest": "modifyResponse",
+                    "addRequest": "addResponse",
+                    "delRequest": "delResponse",
+                    "modifyDNRequest": "modifyDNResponse",
+                    "compareRequest": "compareResponse",
+                }[op_name]
+                logger.info("%s from %s (responding not authorized)", op_name, self.client_address[0])
+                response = build_ldap_result_response(message_id, response_name, result_code=50)
+                self.request.sendall(encode_ldap_message(response))
+                return
+
+            if op_name == "abandonRequest":
+                logger.info("Abandon request from %s (ignored)", self.client_address[0])
                 return
 
             logger.info("Ignoring unsupported protocol op=%s", op_name)
