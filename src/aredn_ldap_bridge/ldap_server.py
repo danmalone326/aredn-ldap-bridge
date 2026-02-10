@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import logging
 import socketserver
-from typing import Iterable, List, Tuple
 
+from pyasn1.codec.ber import decoder
 from pyasn1.error import SubstrateUnderrunError
 
 from .config import Config
 from .ldap_protocol import (
+    BindRequestMessage,
+    SearchRequestLooseMessage,
     build_bind_response,
     build_extended_response,
     build_ldap_result_response,
@@ -75,7 +77,7 @@ def _make_handler(config: Config, cache: LazyCache):
 
                 while buffer:
                     try:
-                        message, rest = decode_ldap_message(buffer)
+                        message_id, op_bytes, rest = decode_ldap_message(buffer)
                     except SubstrateUnderrunError:
                         break
                     except Exception as exc:
@@ -84,16 +86,18 @@ def _make_handler(config: Config, cache: LazyCache):
                         return
 
                     buffer = rest
-                    self._handle_message(message)
+                    self._handle_message(message_id, op_bytes)
 
-        def _handle_message(self, message) -> None:
+        def _handle_message(self, message_id: int, op_bytes: bytes) -> None:
             logger = logging.getLogger("aredn_ldap_bridge.ldap_server")
-            message_id = int(message.getComponentByName("messageID"))
-            protocol_op = message.getComponentByName("protocolOp")
-            op_name = protocol_op.getName()
+            op_tag = peek_ldap_op_tag(op_bytes)
 
-            if op_name == "bindRequest":
-                bind_request = protocol_op.getComponent()
+            if op_tag == "1:1:0":
+                try:
+                    bind_request, _ = decoder.decode(op_bytes, asn1Spec=BindRequestMessage())
+                except Exception as exc:
+                    logger.warning("Failed to decode bind request err=%s", exc)
+                    return
                 bind_dn = _to_text(bind_request.getComponentByName("name"))
                 logger.info("Bind request from %s dn=%s", self.client_address[0], bind_dn)
 
@@ -101,8 +105,12 @@ def _make_handler(config: Config, cache: LazyCache):
                 self.request.sendall(encode_ldap_message(response))
                 return
 
-            if op_name == "searchRequest":
-                search_request = protocol_op.getComponent()
+            if op_tag == "1:1:3":
+                try:
+                    search_request, _ = decoder.decode(op_bytes, asn1Spec=SearchRequestLooseMessage())
+                except Exception as exc:
+                    logger.warning("Failed to decode search request err=%s", exc)
+                    return
                 base_dn = _to_text(search_request.getComponentByName("baseObject"))
                 filter_value = search_request.getComponentByName("filter")
                 try:
@@ -139,33 +147,33 @@ def _make_handler(config: Config, cache: LazyCache):
                 self.request.sendall(encode_ldap_message(done_msg))
                 return
 
-            if op_name == "unbindRequest":
+            if op_tag == "1:0:2":
                 logger.info("Unbind request from %s", self.client_address[0])
                 return
 
-            if op_name == "extendedRequest":
+            if op_tag == "1:1:23":
                 logger.info("Extended request from %s (responding not authorized)", self.client_address[0])
                 response = build_extended_response(message_id, result_code=50)
                 self.request.sendall(encode_ldap_message(response))
                 return
 
-            if op_name in {"modifyRequest", "addRequest", "delRequest", "modifyDNRequest", "compareRequest"}:
+            if op_tag in {"1:1:6", "1:1:8", "1:0:10", "1:1:12", "1:1:14"}:
                 response_name = {
-                    "modifyRequest": "modifyResponse",
-                    "addRequest": "addResponse",
-                    "delRequest": "delResponse",
-                    "modifyDNRequest": "modifyDNResponse",
-                    "compareRequest": "compareResponse",
-                }[op_name]
-                logger.info("%s from %s (responding not authorized)", op_name, self.client_address[0])
+                    "1:1:6": "modifyResponse",
+                    "1:1:8": "addResponse",
+                    "1:0:10": "delResponse",
+                    "1:1:12": "modifyDNResponse",
+                    "1:1:14": "compareResponse",
+                }[op_tag]
+                logger.info("Request op_tag=%s from %s (responding not authorized)", op_tag, self.client_address[0])
                 response = build_ldap_result_response(message_id, response_name, result_code=50)
                 self.request.sendall(encode_ldap_message(response))
                 return
 
-            if op_name == "abandonRequest":
+            if op_tag == "1:0:16":
                 logger.info("Abandon request from %s (ignored)", self.client_address[0])
                 return
 
-            logger.info("Ignoring unsupported protocol op=%s", op_name)
+            logger.info("Ignoring unsupported protocol op_tag=%s", op_tag)
 
     return LDAPRequestHandler

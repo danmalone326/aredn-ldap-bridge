@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Tuple
-
 from pyasn1.codec.ber import decoder, encoder
 from pyasn1.error import SubstrateUnderrunError
 from pyasn1.type import namedtype, namedval, tag, univ
@@ -410,9 +408,7 @@ class ExtendedResponseMessage(ExtendedResponse):
 
 class ProtocolOp(univ.Choice):
     componentType = namedtype.NamedTypes(
-        namedtype.NamedType("bindRequest", BindRequestMessage()),
         namedtype.NamedType("bindResponse", BindResponseMessage()),
-        namedtype.NamedType("searchRequest", SearchRequestMessage()),
         namedtype.NamedType("searchResEntry", SearchResultEntryMessage()),
         namedtype.NamedType("searchResDone", SearchResultDoneMessage()),
         namedtype.NamedType("modifyResponse", ModifyResponseMessage()),
@@ -421,30 +417,6 @@ class ProtocolOp(univ.Choice):
         namedtype.NamedType("modifyDNResponse", ModifyDNResponseMessage()),
         namedtype.NamedType("compareResponse", CompareResponseMessage()),
         namedtype.NamedType("extendedResponse", ExtendedResponseMessage()),
-        namedtype.NamedType("unbindRequest", univ.Null().subtype(
-            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 2)
-        )),
-        namedtype.NamedType("extendedRequest", univ.Any().subtype(
-            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 23)
-        )),
-        namedtype.NamedType("modifyRequest", univ.Any().subtype(
-            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 6)
-        )),
-        namedtype.NamedType("addRequest", univ.Any().subtype(
-            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 8)
-        )),
-        namedtype.NamedType("delRequest", univ.Any().subtype(
-            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 10)
-        )),
-        namedtype.NamedType("modifyDNRequest", univ.Any().subtype(
-            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 12)
-        )),
-        namedtype.NamedType("compareRequest", univ.Any().subtype(
-            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 14)
-        )),
-        namedtype.NamedType("abandonRequest", univ.Any().subtype(
-            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 16)
-        )),
     )
 
 
@@ -493,69 +465,35 @@ class SearchRequestLooseMessage(SearchRequestLoose):
     )
 
 
-class ProtocolOpLoose(univ.Choice):
-    componentType = namedtype.NamedTypes(
-        namedtype.NamedType("bindRequest", BindRequestMessage()),
-        namedtype.NamedType("bindResponse", BindResponseMessage()),
-        namedtype.NamedType("searchRequest", SearchRequestLooseMessage()),
-        namedtype.NamedType("searchResEntry", SearchResultEntryMessage()),
-        namedtype.NamedType("searchResDone", SearchResultDoneMessage()),
-        namedtype.NamedType("modifyResponse", ModifyResponseMessage()),
-        namedtype.NamedType("addResponse", AddResponseMessage()),
-        namedtype.NamedType("delResponse", DelResponseMessage()),
-        namedtype.NamedType("modifyDNResponse", ModifyDNResponseMessage()),
-        namedtype.NamedType("compareResponse", CompareResponseMessage()),
-        namedtype.NamedType("extendedResponse", ExtendedResponseMessage()),
-        namedtype.NamedType("unbindRequest", univ.Null().subtype(
-            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 2)
-        )),
-        namedtype.NamedType("extendedRequest", univ.Any().subtype(
-            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 23)
-        )),
-        namedtype.NamedType("modifyRequest", univ.Any().subtype(
-            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 6)
-        )),
-        namedtype.NamedType("addRequest", univ.Any().subtype(
-            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 8)
-        )),
-        namedtype.NamedType("delRequest", univ.Any().subtype(
-            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 10)
-        )),
-        namedtype.NamedType("modifyDNRequest", univ.Any().subtype(
-            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 12)
-        )),
-        namedtype.NamedType("compareRequest", univ.Any().subtype(
-            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 14)
-        )),
-        namedtype.NamedType("abandonRequest", univ.Any().subtype(
-            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 16)
-        )),
-    )
-
-
-class LDAPMessageLoose(univ.Sequence):
+class LDAPMessageRaw(univ.Sequence):
     componentType = namedtype.NamedTypes(
         namedtype.NamedType("messageID", MessageID()),
-        namedtype.NamedType("protocolOp", ProtocolOpLoose()),
+        namedtype.NamedType("protocolOp", univ.Any()),
     )
 
 
 def decode_ldap_message(data: bytes):
-    return decoder.decode(data, asn1Spec=LDAPMessageLoose())
+    message, rest = decoder.decode(data, asn1Spec=LDAPMessageRaw())
+    message_id = int(message.getComponentByName("messageID"))
+    op_any = message.getComponentByName("protocolOp")
+    return message_id, _any_to_bytes(op_any), rest
 
 
 def peek_ldap_op_tag(data: bytes) -> str:
-    if len(data) < 2:
+    if len(data) < 1:
         return "unknown"
-    _, length_len = _ber_length_len(data, 1)
-    start = 1 + length_len
-    if start >= len(data):
-        return "unknown"
-    tag_byte = data[start]
+    tag_byte = data[0]
     tag_class = (tag_byte & 0xC0) >> 6
     tag_form = (tag_byte & 0x20) >> 5
     tag_number = tag_byte & 0x1F
     return f"{tag_class}:{tag_form}:{tag_number}"
+
+
+def _any_to_bytes(value: univ.Any) -> bytes:
+    try:
+        return bytes(value.asOctets())
+    except Exception:
+        return bytes(value)
 
 
 def _ber_length_len(data: bytes, offset: int) -> tuple[int, int]:
