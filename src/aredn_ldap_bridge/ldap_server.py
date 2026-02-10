@@ -61,6 +61,18 @@ def _make_handler(config: Config, cache: LazyCache):
 
     class LDAPRequestHandler(socketserver.BaseRequestHandler):
         _MAX_MESSAGE_BYTES = 64 * 1024
+        _OP_TAG_NAMES = {
+            "1:1:0": "bindRequest",
+            "1:1:3": "searchRequest",
+            "1:0:2": "unbindRequest",
+            "1:1:6": "modifyRequest",
+            "1:1:8": "addRequest",
+            "1:0:10": "delRequest",
+            "1:1:12": "modifyDNRequest",
+            "1:1:14": "compareRequest",
+            "1:0:16": "abandonRequest",
+            "1:1:23": "extendedRequest",
+        }
 
         def handle(self) -> None:
             logger = logging.getLogger("aredn_ldap_bridge.ldap_server")
@@ -91,13 +103,14 @@ def _make_handler(config: Config, cache: LazyCache):
         def _handle_message(self, message_id: int, op_bytes: bytes) -> None:
             logger = logging.getLogger("aredn_ldap_bridge.ldap_server")
             op_tag = peek_ldap_op_tag(op_bytes)
+            op_name = self._OP_TAG_NAMES.get(op_tag, "unknown")
 
             if op_tag == "1:1:0":
                 try:
                     bind_request, _ = decoder.decode(op_bytes, asn1Spec=BindRequestMessage())
                 except Exception as exc:
-                    logger.warning("Failed to decode bind request err=%s", exc)
-                    return
+                logger.warning("Failed to decode bind request err=%s", exc)
+                return
                 bind_dn = _to_text(bind_request.getComponentByName("name"))
                 logger.info("Bind request from %s dn=%s", self.client_address[0], bind_dn)
 
@@ -165,7 +178,12 @@ def _make_handler(config: Config, cache: LazyCache):
                     "1:1:12": "modifyDNResponse",
                     "1:1:14": "compareResponse",
                 }[op_tag]
-                logger.info("Request op_tag=%s from %s (responding not authorized)", op_tag, self.client_address[0])
+                logger.info(
+                    "Request op=%s op_tag=%s from %s (responding not authorized)",
+                    op_name,
+                    op_tag,
+                    self.client_address[0],
+                )
                 response = build_ldap_result_response(message_id, response_name, result_code=50)
                 self.request.sendall(encode_ldap_message(response))
                 return
@@ -174,6 +192,6 @@ def _make_handler(config: Config, cache: LazyCache):
                 logger.info("Abandon request from %s (ignored)", self.client_address[0])
                 return
 
-            logger.info("Ignoring unsupported protocol op_tag=%s", op_tag)
+            logger.info("Ignoring unsupported protocol op=%s op_tag=%s", op_name, op_tag)
 
     return LDAPRequestHandler
