@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Tuple
-
 from pyasn1.codec.ber import decoder, encoder
 from pyasn1.error import SubstrateUnderrunError
 from pyasn1.type import namedtype, namedval, tag, univ
@@ -344,16 +342,81 @@ class SearchResultDoneMessage(SearchResultDone):
     )
 
 
+class LDAPResult(univ.Sequence):
+    componentType = namedtype.NamedTypes(
+        namedtype.NamedType("resultCode", ResultCode()),
+        namedtype.NamedType("matchedDN", LDAPDN()),
+        namedtype.NamedType("diagnosticMessage", LDAPString()),
+    )
+
+
+class ModifyResponseMessage(LDAPResult):
+    tagSet = LDAPResult.tagSet.tagImplicitly(
+        tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 7)
+    )
+
+
+class AddResponseMessage(LDAPResult):
+    tagSet = LDAPResult.tagSet.tagImplicitly(
+        tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 9)
+    )
+
+
+class DelResponseMessage(LDAPResult):
+    tagSet = LDAPResult.tagSet.tagImplicitly(
+        tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 11)
+    )
+
+
+class ModifyDNResponseMessage(LDAPResult):
+    tagSet = LDAPResult.tagSet.tagImplicitly(
+        tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 13)
+    )
+
+
+class CompareResponseMessage(LDAPResult):
+    tagSet = LDAPResult.tagSet.tagImplicitly(
+        tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 15)
+    )
+
+
+class ExtendedResponse(univ.Sequence):
+    componentType = namedtype.NamedTypes(
+        namedtype.NamedType("resultCode", ResultCode()),
+        namedtype.NamedType("matchedDN", LDAPDN()),
+        namedtype.NamedType("diagnosticMessage", LDAPString()),
+        namedtype.OptionalNamedType(
+            "responseName",
+            LDAPString().subtype(
+                implicitTag=tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 10)
+            ),
+        ),
+        namedtype.OptionalNamedType(
+            "responseValue",
+            univ.OctetString().subtype(
+                implicitTag=tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 11)
+            ),
+        ),
+    )
+
+
+class ExtendedResponseMessage(ExtendedResponse):
+    tagSet = ExtendedResponse.tagSet.tagImplicitly(
+        tag.Tag(tag.tagClassApplication, tag.tagFormatConstructed, 24)
+    )
+
+
 class ProtocolOp(univ.Choice):
     componentType = namedtype.NamedTypes(
-        namedtype.NamedType("bindRequest", BindRequestMessage()),
         namedtype.NamedType("bindResponse", BindResponseMessage()),
-        namedtype.NamedType("searchRequest", SearchRequestMessage()),
         namedtype.NamedType("searchResEntry", SearchResultEntryMessage()),
         namedtype.NamedType("searchResDone", SearchResultDoneMessage()),
-        namedtype.NamedType("unbindRequest", univ.Null().subtype(
-            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 2)
-        )),
+        namedtype.NamedType("modifyResponse", ModifyResponseMessage()),
+        namedtype.NamedType("addResponse", AddResponseMessage()),
+        namedtype.NamedType("delResponse", DelResponseMessage()),
+        namedtype.NamedType("modifyDNResponse", ModifyDNResponseMessage()),
+        namedtype.NamedType("compareResponse", CompareResponseMessage()),
+        namedtype.NamedType("extendedResponse", ExtendedResponseMessage()),
     )
 
 
@@ -402,42 +465,35 @@ class SearchRequestLooseMessage(SearchRequestLoose):
     )
 
 
-class ProtocolOpLoose(univ.Choice):
-    componentType = namedtype.NamedTypes(
-        namedtype.NamedType("bindRequest", BindRequestMessage()),
-        namedtype.NamedType("bindResponse", BindResponseMessage()),
-        namedtype.NamedType("searchRequest", SearchRequestLooseMessage()),
-        namedtype.NamedType("searchResEntry", SearchResultEntryMessage()),
-        namedtype.NamedType("searchResDone", SearchResultDoneMessage()),
-        namedtype.NamedType("unbindRequest", univ.Null().subtype(
-            implicitTag=tag.Tag(tag.tagClassApplication, tag.tagFormatSimple, 2)
-        )),
-    )
-
-
-class LDAPMessageLoose(univ.Sequence):
+class LDAPMessageRaw(univ.Sequence):
     componentType = namedtype.NamedTypes(
         namedtype.NamedType("messageID", MessageID()),
-        namedtype.NamedType("protocolOp", ProtocolOpLoose()),
+        namedtype.NamedType("protocolOp", univ.Any()),
     )
 
 
 def decode_ldap_message(data: bytes):
-    return decoder.decode(data, asn1Spec=LDAPMessageLoose())
+    message, rest = decoder.decode(data, asn1Spec=LDAPMessageRaw())
+    message_id = int(message.getComponentByName("messageID"))
+    op_any = message.getComponentByName("protocolOp")
+    return message_id, _any_to_bytes(op_any), rest
 
 
 def peek_ldap_op_tag(data: bytes) -> str:
-    if len(data) < 2:
+    if len(data) < 1:
         return "unknown"
-    _, length_len = _ber_length_len(data, 1)
-    start = 1 + length_len
-    if start >= len(data):
-        return "unknown"
-    tag_byte = data[start]
+    tag_byte = data[0]
     tag_class = (tag_byte & 0xC0) >> 6
     tag_form = (tag_byte & 0x20) >> 5
     tag_number = tag_byte & 0x1F
     return f"{tag_class}:{tag_form}:{tag_number}"
+
+
+def _any_to_bytes(value: univ.Any) -> bytes:
+    try:
+        return bytes(value.asOctets())
+    except Exception:
+        return bytes(value)
 
 
 def _ber_length_len(data: bytes, offset: int) -> tuple[int, int]:
@@ -499,3 +555,27 @@ def build_search_result_done(message_id: int, result_code: int = 0) -> LDAPMessa
     done.setComponentByName("matchedDN", b"")
     done.setComponentByName("diagnosticMessage", b"")
     return make_ldap_message(message_id, "searchResDone", done)
+
+
+def build_extended_response(message_id: int, result_code: int) -> LDAPMessage:
+    response = ExtendedResponseMessage()
+    response.setComponentByName("resultCode", result_code)
+    response.setComponentByName("matchedDN", b"")
+    response.setComponentByName("diagnosticMessage", b"")
+    return make_ldap_message(message_id, "extendedResponse", response)
+
+
+def build_ldap_result_response(message_id: int, op_name: str, result_code: int) -> LDAPMessage:
+    response_map = {
+        "modifyResponse": ModifyResponseMessage,
+        "addResponse": AddResponseMessage,
+        "delResponse": DelResponseMessage,
+        "modifyDNResponse": ModifyDNResponseMessage,
+        "compareResponse": CompareResponseMessage,
+    }
+    response_cls = response_map[op_name]
+    response = response_cls()
+    response.setComponentByName("resultCode", result_code)
+    response.setComponentByName("matchedDN", b"")
+    response.setComponentByName("diagnosticMessage", b"")
+    return make_ldap_message(message_id, op_name, response)
