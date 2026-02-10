@@ -109,8 +109,8 @@ def _make_handler(config: Config, cache: LazyCache):
                 try:
                     bind_request, _ = decoder.decode(op_bytes, asn1Spec=BindRequestMessage())
                 except Exception as exc:
-                logger.warning("Failed to decode bind request err=%s", exc)
-                return
+                    logger.warning("Failed to decode bind request err=%s", exc)
+                    return
                 bind_dn = _to_text(bind_request.getComponentByName("name"))
                 logger.info("Bind request from %s dn=%s", self.client_address[0], bind_dn)
 
