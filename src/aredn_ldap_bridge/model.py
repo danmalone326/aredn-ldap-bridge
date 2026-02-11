@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Tuple, List, Optional, Iterable
+import re
+from typing import Tuple, List, Iterable
 
 from .util import stable_uid
 
@@ -21,19 +22,31 @@ def build_static_entries(base_dn: str) -> List[DirectoryEntry]:
         DirectoryEntry(
             uid="static-001",
             cn="AREDN Echo Test",
-            telephone_number="10.0.0.10",
+            telephone_number="sip:10.0.0.10",
             dn=f"uid=static-001,{base_dn}",
             link="",
         ),
         DirectoryEntry(
             uid="static-002",
             cn="AREDN Radio Room",
-            telephone_number="10.0.0.20",
+            telephone_number="sip:10.0.0.20",
             dn=f"uid=static-002,{base_dn}",
             link="",
         ),
     ]
     return entries
+
+
+def _telephone_number(ip: str, link: str) -> str:
+    if link.lower().startswith("sip:"):
+        suffix = link[4:].replace("/", "")
+        return f"sip:{suffix}" if suffix else f"sip:{ip}"
+    return f"sip:{ip}"
+
+
+def _display_name(name: str) -> str:
+    # Strip one trailing bracketed marker like "[phone]" from service names.
+    return re.sub(r"\s*\[[^\]]+\]\s*$", "", name).strip()
 
 
 def entries_from_services(services: Iterable[dict], base_dn: str) -> List[DirectoryEntry]:
@@ -48,8 +61,8 @@ def entries_from_services(services: Iterable[dict], base_dn: str) -> List[Direct
         results.append(
             DirectoryEntry(
                 uid=uid,
-                cn=name,
-                telephone_number=ip,
+                cn=_display_name(name),
+                telephone_number=_telephone_number(ip, link),
                 dn=f"uid={uid},{base_dn}",
                 link=link,
             )
