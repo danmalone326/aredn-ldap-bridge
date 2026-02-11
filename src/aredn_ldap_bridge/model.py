@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Tuple, List, Iterable
 
 from .util import stable_uid
@@ -43,6 +44,11 @@ def _telephone_number(ip: str, link: str) -> str:
     return f"sip:{ip}"
 
 
+def _display_name(name: str) -> str:
+    # Strip one trailing bracketed marker like "[phone]" from service names.
+    return re.sub(r"\s*\[[^\]]+\]\s*$", "", name).strip()
+
+
 def entries_from_services(services: Iterable[dict], base_dn: str) -> List[DirectoryEntry]:
     results: List[DirectoryEntry] = []
     for service in services:
@@ -55,7 +61,7 @@ def entries_from_services(services: Iterable[dict], base_dn: str) -> List[Direct
         results.append(
             DirectoryEntry(
                 uid=uid,
-                cn=name,
+                cn=_display_name(name),
                 telephone_number=_telephone_number(ip, link),
                 dn=f"uid={uid},{base_dn}",
                 link=link,
