@@ -9,6 +9,7 @@ from pyasn1.error import SubstrateUnderrunError
 from .config import Config
 from .ldap_protocol import (
     BindRequestMessage,
+    Filter,
     SearchRequestLooseMessage,
     build_bind_response,
     build_extended_response,
@@ -20,7 +21,7 @@ from .ldap_protocol import (
     peek_ldap_op_tag,
 )
 from .cache import LazyCache
-from .matcher import FilterNode, filter_entries, parse_filter_bytes
+from .matcher import filter_entries
 
 
 def create_server(config: Config, cache: LazyCache) -> socketserver.ThreadingTCPServer:
@@ -132,10 +133,11 @@ def _make_handler(config: Config, cache: LazyCache):
                     filter_bytes = bytes(filter_value)
 
                 logger.info(
-                    "Search request from %s base_dn=%s filter=%s filter_len=%s",
+                    "Search request from %s base_dn=%s filter=%s filter_hex=%s filter_len=%s",
                     self.client_address[0],
                     base_dn,
-                    _summarize_filter(filter_bytes),
+                    _render_filter_expression(filter_bytes),
+                    filter_bytes.hex(),
                     len(filter_bytes),
                 )
 
@@ -198,24 +200,91 @@ def _make_handler(config: Config, cache: LazyCache):
     return LDAPRequestHandler
 
 
-def _summarize_filter(filter_bytes: bytes) -> str:
+def _render_filter_expression(filter_bytes: bytes) -> str:
     try:
-        node = parse_filter_bytes(filter_bytes)
+        filter_obj, rest = decoder.decode(filter_bytes, asn1Spec=Filter())
+        if rest:
+            return f"{_filter_to_text(filter_obj)} <trailing={rest.hex()}>"
+        return _filter_to_text(filter_obj)
     except Exception:
         return "<unparsed>"
-    return _node_to_text(node)
 
 
-def _node_to_text(node: FilterNode) -> str:
-    if node.op == "present":
-        return "(present)"
-    if node.op == "tokens":
-        joined = ",".join(token for token in node.tokens if token)
-        return f"(tokens:{joined or '*'})"
-    if node.op in {"and", "or"}:
-        children = ",".join(_node_to_text(child) for child in node.children)
-        return f"({node.op}:{children})"
-    if node.op == "not":
-        child = _node_to_text(node.children[0]) if node.children else "(present)"
-        return f"(not:{child})"
-    return f"({node.op})"
+def _filter_to_text(filter_obj: Filter) -> str:
+    op_name = filter_obj.getName()
+    value = filter_obj.getComponent()
+    if op_name == "and_":
+        return "(&" + "".join(_filter_to_text(child) for child in value) + ")"
+    if op_name == "or_":
+        return "(|" + "".join(_filter_to_text(child) for child in value) + ")"
+    if op_name == "not_":
+        return "(!" + _filter_to_text(value) + ")"
+    if op_name == "present":
+        return f"({_asn1_to_text(value)}=*)"
+    if op_name == "equalityMatch":
+        return _ava_to_text(value, "=")
+    if op_name == "greaterOrEqual":
+        return _ava_to_text(value, ">=")
+    if op_name == "lessOrEqual":
+        return _ava_to_text(value, "<=")
+    if op_name == "approxMatch":
+        return _ava_to_text(value, "~=")
+    if op_name == "substrings":
+        return _substrings_to_text(value)
+    if op_name == "extensibleMatch":
+        return "(extensibleMatch=*)"
+    return "(unknown=*)"
+
+
+def _ava_to_text(ava, operator: str) -> str:
+    attr = _asn1_to_text(ava.getComponentByName("attributeDesc"))
+    token = _escape_filter_value(_asn1_to_text(ava.getComponentByName("assertionValue")))
+    return f"({attr}{operator}{token})"
+
+
+def _substrings_to_text(substring_filter) -> str:
+    attr = _asn1_to_text(substring_filter.getComponentByName("type"))
+    substrings = substring_filter.getComponentByName("substrings")
+    initial = ""
+    any_tokens: list[str] = []
+    final = ""
+    for piece in substrings:
+        piece_name = piece.getName()
+        piece_text = _escape_filter_value(_asn1_to_text(piece.getComponent()))
+        if piece_name == "initial":
+            initial = piece_text
+        elif piece_name == "any":
+            any_tokens.append(piece_text)
+        elif piece_name == "final":
+            final = piece_text
+    pattern_parts: list[str] = []
+    if initial:
+        pattern_parts.append(initial)
+    pattern_parts.append("*")
+    for token in any_tokens:
+        pattern_parts.append(token)
+        pattern_parts.append("*")
+    if final:
+        pattern_parts.append(final)
+    return f"({attr}={''.join(pattern_parts)})"
+
+
+def _asn1_to_text(value) -> str:
+    try:
+        raw = bytes(value.asOctets())
+    except Exception:
+        try:
+            raw = bytes(value)
+        except Exception:
+            return str(value)
+    return raw.decode("utf-8", errors="replace")
+
+
+def _escape_filter_value(value: str) -> str:
+    return (
+        value.replace("\\", "\\5c")
+        .replace("*", "\\2a")
+        .replace("(", "\\28")
+        .replace(")", "\\29")
+        .replace("\x00", "\\00")
+    )
