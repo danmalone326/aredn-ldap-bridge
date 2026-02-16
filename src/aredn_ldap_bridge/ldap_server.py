@@ -20,7 +20,7 @@ from .ldap_protocol import (
     peek_ldap_op_tag,
 )
 from .cache import LazyCache
-from .matcher import filter_entries
+from .matcher import FilterNode, filter_entries, parse_filter_bytes
 
 
 def create_server(config: Config, cache: LazyCache) -> socketserver.ThreadingTCPServer:
@@ -132,9 +132,10 @@ def _make_handler(config: Config, cache: LazyCache):
                     filter_bytes = bytes(filter_value)
 
                 logger.info(
-                    "Search request from %s base_dn=%s filter_len=%s",
+                    "Search request from %s base_dn=%s filter=%s filter_len=%s",
                     self.client_address[0],
                     base_dn,
+                    _summarize_filter(filter_bytes),
                     len(filter_bytes),
                 )
 
@@ -195,3 +196,26 @@ def _make_handler(config: Config, cache: LazyCache):
             logger.info("Ignoring unsupported protocol op=%s op_tag=%s", op_name, op_tag)
 
     return LDAPRequestHandler
+
+
+def _summarize_filter(filter_bytes: bytes) -> str:
+    try:
+        node = parse_filter_bytes(filter_bytes)
+    except Exception:
+        return "<unparsed>"
+    return _node_to_text(node)
+
+
+def _node_to_text(node: FilterNode) -> str:
+    if node.op == "present":
+        return "(present)"
+    if node.op == "tokens":
+        joined = ",".join(token for token in node.tokens if token)
+        return f"(tokens:{joined or '*'})"
+    if node.op in {"and", "or"}:
+        children = ",".join(_node_to_text(child) for child in node.children)
+        return f"({node.op}:{children})"
+    if node.op == "not":
+        child = _node_to_text(node.children[0]) if node.children else "(present)"
+        return f"(not:{child})"
+    return f"({node.op})"
