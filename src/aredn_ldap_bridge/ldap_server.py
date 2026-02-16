@@ -9,7 +9,6 @@ from pyasn1.error import SubstrateUnderrunError
 from .config import Config
 from .ldap_protocol import (
     BindRequestMessage,
-    Filter,
     SearchRequestLooseMessage,
     build_bind_response,
     build_extended_response,
@@ -202,61 +201,106 @@ def _make_handler(config: Config, cache: LazyCache):
 
 def _render_filter_expression(filter_bytes: bytes) -> str:
     try:
-        filter_obj, rest = decoder.decode(filter_bytes, asn1Spec=Filter())
-        if rest:
-            return f"{_filter_to_text(filter_obj)} <trailing={rest.hex()}>"
-        return _filter_to_text(filter_obj)
+        text, next_offset = _parse_filter_at(filter_bytes, 0)
+        if next_offset != len(filter_bytes):
+            return f"{text} <trailing={filter_bytes[next_offset:].hex()}>"
+        return text
     except Exception:
         return "<unparsed>"
 
 
-def _filter_to_text(filter_obj: Filter) -> str:
-    op_name = filter_obj.getName()
-    value = filter_obj.getComponent()
-    if op_name == "and_":
-        return "(&" + "".join(_filter_to_text(child) for child in value) + ")"
-    if op_name == "or_":
-        return "(|" + "".join(_filter_to_text(child) for child in value) + ")"
-    if op_name == "not_":
-        return "(!" + _filter_to_text(value) + ")"
-    if op_name == "present":
-        return f"({_asn1_to_text(value)}=*)"
-    if op_name == "equalityMatch":
-        return _ava_to_text(value, "=")
-    if op_name == "greaterOrEqual":
-        return _ava_to_text(value, ">=")
-    if op_name == "lessOrEqual":
-        return _ava_to_text(value, "<=")
-    if op_name == "approxMatch":
-        return _ava_to_text(value, "~=")
-    if op_name == "substrings":
-        return _substrings_to_text(value)
-    if op_name == "extensibleMatch":
-        return "(extensibleMatch=*)"
-    return "(unknown=*)"
+def _parse_filter_at(data: bytes, offset: int) -> tuple[str, int]:
+    tag_class, _, tag_number, length, header_len = _read_tlv_header(data, offset)
+    value_start = offset + header_len
+    value_end = value_start + length
+    value = data[value_start:value_end]
+
+    if tag_class != 0x80:
+        return "(unknown=*)", value_end
+
+    if tag_number == 0:
+        return "(&" + "".join(_parse_filter_list(value)) + ")", value_end
+    if tag_number == 1:
+        return "(|" + "".join(_parse_filter_list(value)) + ")", value_end
+    if tag_number == 2:
+        child, _ = _parse_filter_at(value, 0)
+        return "(!" + child + ")", value_end
+    if tag_number == 3:
+        return _parse_ava_content(value, "="), value_end
+    if tag_number == 4:
+        return _parse_substrings_content(value), value_end
+    if tag_number == 5:
+        return _parse_ava_content(value, ">="), value_end
+    if tag_number == 6:
+        return _parse_ava_content(value, "<="), value_end
+    if tag_number == 7:
+        return f"({_decode_bytes(value)}=*)", value_end
+    if tag_number == 8:
+        return _parse_ava_content(value, "~="), value_end
+    if tag_number == 9:
+        return "(extensibleMatch=*)", value_end
+    return f"(unknown:{tag_number})", value_end
 
 
-def _ava_to_text(ava, operator: str) -> str:
-    attr = _asn1_to_text(ava.getComponentByName("attributeDesc"))
-    token = _escape_filter_value(_asn1_to_text(ava.getComponentByName("assertionValue")))
-    return f"({attr}{operator}{token})"
+def _parse_filter_list(data: bytes) -> list[str]:
+    items: list[str] = []
+    offset = 0
+    while offset < len(data):
+        text, next_offset = _parse_filter_at(data, offset)
+        if next_offset <= offset:
+            break
+        items.append(text)
+        offset = next_offset
+    return items
 
 
-def _substrings_to_text(substring_filter) -> str:
-    attr = _asn1_to_text(substring_filter.getComponentByName("type"))
-    substrings = substring_filter.getComponentByName("substrings")
+def _parse_ava_content(data: bytes, operator: str) -> str:
+    parts: list[bytes] = []
+    offset = 0
+    while offset < len(data) and len(parts) < 2:
+        tag_class, _, tag_number, length, header_len = _read_tlv_header(data, offset)
+        if tag_class != 0x00 or tag_number != 4:
+            break
+        value_start = offset + header_len
+        value_end = value_start + length
+        parts.append(data[value_start:value_end])
+        offset = value_end
+
+    attr = _decode_bytes(parts[0]) if parts else "attr"
+    token = _decode_bytes(parts[1]) if len(parts) > 1 else ""
+    return f"({_escape_filter_value(attr)}{operator}{_escape_filter_value(token)})"
+
+
+def _parse_substrings_content(data: bytes) -> str:
+    attr_class, _, attr_tag, attr_len, attr_hdr = _read_tlv_header(data, 0)
+    if attr_class != 0x00 or attr_tag != 4:
+        return "(unknown=*)"
+    attr_start = attr_hdr
+    attr_end = attr_start + attr_len
+    attr = _decode_bytes(data[attr_start:attr_end])
+
+    seq_class, _, seq_tag, seq_len, seq_hdr = _read_tlv_header(data, attr_end)
+    if seq_class != 0x00 or seq_tag != 16:
+        return f"({_escape_filter_value(attr)}=*)"
+
+    offset = attr_end + seq_hdr
+    seq_end = offset + seq_len
     initial = ""
     any_tokens: list[str] = []
     final = ""
-    for piece in substrings:
-        piece_name = piece.getName()
-        piece_text = _escape_filter_value(_asn1_to_text(piece.getComponent()))
-        if piece_name == "initial":
-            initial = piece_text
-        elif piece_name == "any":
-            any_tokens.append(piece_text)
-        elif piece_name == "final":
-            final = piece_text
+    while offset < seq_end:
+        piece_class, _, piece_tag, piece_len, piece_hdr = _read_tlv_header(data, offset)
+        piece_start = offset + piece_hdr
+        piece_end = piece_start + piece_len
+        token = _escape_filter_value(_decode_bytes(data[piece_start:piece_end]))
+        if piece_class == 0x80 and piece_tag == 0:
+            initial = token
+        elif piece_class == 0x80 and piece_tag == 1:
+            any_tokens.append(token)
+        elif piece_class == 0x80 and piece_tag == 2:
+            final = token
+        offset = piece_end
+
     pattern_parts: list[str] = []
     if initial:
         pattern_parts.append(initial)
@@ -266,17 +310,35 @@ def _substrings_to_text(substring_filter) -> str:
         pattern_parts.append("*")
     if final:
         pattern_parts.append(final)
-    return f"({attr}={''.join(pattern_parts)})"
+    return f"({_escape_filter_value(attr)}={''.join(pattern_parts)})"
 
 
-def _asn1_to_text(value) -> str:
-    try:
-        raw = bytes(value.asOctets())
-    except Exception:
-        try:
-            raw = bytes(value)
-        except Exception:
-            return str(value)
+def _read_tlv_header(data: bytes, offset: int) -> tuple[int, bool, int, int, int]:
+    if offset >= len(data):
+        raise ValueError("offset out of range")
+    first = data[offset]
+    tag_class = first & 0xC0
+    constructed = bool(first & 0x20)
+    tag_number = first & 0x1F
+
+    if offset + 1 >= len(data):
+        raise ValueError("missing length")
+    length_byte = data[offset + 1]
+    if length_byte & 0x80 == 0:
+        return tag_class, constructed, tag_number, length_byte, 2
+
+    length_octets = length_byte & 0x7F
+    if length_octets == 0:
+        raise ValueError("indefinite length not supported")
+    if offset + 2 + length_octets > len(data):
+        raise ValueError("invalid length")
+    length = 0
+    for b in data[offset + 2 : offset + 2 + length_octets]:
+        length = (length << 8) | b
+    return tag_class, constructed, tag_number, length, 2 + length_octets
+
+
+def _decode_bytes(raw: bytes) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
