@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Callable, List
+from typing import List
 
-from .model import DirectoryEntry, entries_from_services
+from .model import DirectoryEntry, entries_from_services, entries_from_test_cases
 from .upstream import UpstreamClient
 
 
@@ -65,6 +65,10 @@ class LazyCache:
         try:
             services = self._upstream.fetch_services()
             entries = entries_from_services(services, self._base_dn)
+            test_entries = entries_from_test_cases("testCases.csv", self._base_dn)
+            if test_entries:
+                self._logger.info("Loaded %s test case entries from testCases.csv", len(test_entries))
+                entries.extend(test_entries)
             with self._lock:
                 self._entries = entries
                 self._last_refresh = time.monotonic()

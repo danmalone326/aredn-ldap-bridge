@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass
 import re
+from pathlib import Path
 from typing import Tuple, List, Iterable
 
 from .util import stable_uid
@@ -65,6 +67,47 @@ def entries_from_services(services: Iterable[dict], base_dn: str) -> List[Direct
                 telephone_number=_telephone_number(ip, link),
                 dn=f"uid={uid},{base_dn}",
                 link=link,
+            )
+        )
+    return results
+
+
+def entries_from_test_cases(csv_path: str, base_dn: str) -> List[DirectoryEntry]:
+    path = Path(csv_path)
+    if not path.exists():
+        return []
+
+    rows: list[list[str]] = []
+    with path.open("r", newline="", encoding="utf-8") as handle:
+        reader = csv.reader(handle)
+        for row in reader:
+            if not row:
+                continue
+            rows.append(row)
+
+    if not rows:
+        return []
+
+    first = [cell.strip().lower() for cell in rows[0]]
+    has_header = len(first) >= 2 and first[0] == "cn" and first[1] in {"telephonenumer", "telephonenumber"}
+    data_rows = rows[1:] if has_header else rows
+
+    results: List[DirectoryEntry] = []
+    for row in data_rows:
+        if len(row) < 2:
+            continue
+        cn = row[0]
+        telephone_number = row[1]
+        if not cn or not telephone_number:
+            continue
+        uid = stable_uid(telephone_number, cn)
+        results.append(
+            DirectoryEntry(
+                uid=uid,
+                cn=cn,
+                telephone_number=telephone_number,
+                dn=f"uid={uid},{base_dn}",
+                link="",
             )
         )
     return results
