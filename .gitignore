@@ -51,3 +51,6 @@ config.ini
 
 # Notebooks
 .ipynb_checkpoints/
+
+# Local rapid-test fixtures
+testCases.csv
