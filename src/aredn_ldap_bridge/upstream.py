@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import List
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
@@ -17,7 +18,7 @@ class UpstreamClient:
     def fetch_services(self) -> List[dict]:
         last_error: Exception | None = None
         for node in self._nodes:
-            url = f"http://{node}/a/sysinfo?services=1"
+            url = f"http://{node}/a/sysinfo?services=1&hosts=1"
             self._logger.info("Fetching upstream services from %s", url)
             try:
                 request = Request(url)
@@ -25,9 +26,16 @@ class UpstreamClient:
                     raw = response.read()
                 payload = json.loads(raw.decode("utf-8"))
                 services = list(payload.get("services", []) or [])
-                hosts = list(payload.get("hosts", []) or [])
+                hosts = payload.get("hosts", []) or []
+                if isinstance(hosts, dict):
+                    hosts = list(hosts.values())
+                elif not isinstance(hosts, list):
+                    hosts = []
                 host_ip_map = _build_host_ip_map(hosts)
                 filtered = []
+                phone_candidates = 0
+                sip_candidates = 0
+                resolved_candidates = 0
                 for svc in services:
                     protocol = str(svc.get("protocol", "")).lower()
                     name = str(svc.get("name", "")).lower()
@@ -35,27 +43,34 @@ class UpstreamClient:
                     is_phone_service = protocol == self._protocol_filter or phone_tag in name
                     if not is_phone_service:
                         continue
+                    phone_candidates += 1
 
                     link = str(svc.get("link", "") or "").strip()
                     sip_target = _parse_sip_target(link)
                     if sip_target is None:
                         continue
+                    sip_candidates += 1
 
                     host, port = sip_target
-                    host_ip = host_ip_map.get(host.lower())
+                    host_ip = host_ip_map.get(host.lower()) or (_normalize_ip(host) if _is_ipv4(host) else None)
                     if not host_ip:
                         self._logger.debug("Skipping service with unresolved sip host host=%s link=%s", host, link)
                         continue
+                    resolved_candidates += 1
 
                     telephone_number = host_ip if port is None else f"{host_ip}:{port}"
                     normalized = dict(svc)
                     normalized["telephone_number"] = telephone_number
                     filtered.append(normalized)
                 self._logger.info(
-                    "Upstream %s returned %s services (%s matched phone-service+sip-link)",
+                    "Upstream %s returned %s services (%s phone candidates, %s sip-link candidates, %s host-resolved, %s final; hosts=%s)",
                     node,
                     len(services),
+                    phone_candidates,
+                    sip_candidates,
+                    resolved_candidates,
                     len(filtered),
+                    len(host_ip_map),
                 )
                 return filtered
             except (HTTPError, URLError, ValueError) as exc:
@@ -72,7 +87,7 @@ def _build_host_ip_map(hosts: List[dict]) -> dict[str, str]:
     mapping: dict[str, str] = {}
     for host in hosts:
         name = str(host.get("name", "") or "").strip()
-        ip = str(host.get("ip", "") or "").strip()
+        ip = _normalize_ip(str(host.get("ip", "") or "").strip())
         if not name or not ip:
             continue
         lower_name = name.lower()
@@ -126,3 +141,11 @@ def _parse_sip_target(link: str) -> tuple[str, int | None] | None:
         return host, int(port_text)
 
     return target.strip(), None
+
+
+def _is_ipv4(value: str) -> bool:
+    return re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){3}", value or "") is not None
+
+
+def _normalize_ip(value: str) -> str:
+    return value.strip()
