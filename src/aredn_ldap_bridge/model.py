@@ -24,26 +24,19 @@ def build_static_entries(base_dn: str) -> List[DirectoryEntry]:
         DirectoryEntry(
             uid="static-001",
             cn="AREDN Echo Test",
-            telephone_number="sip:10.0.0.10",
+            telephone_number="10.0.0.10",
             dn=f"uid=static-001,{base_dn}",
             link="",
         ),
         DirectoryEntry(
             uid="static-002",
             cn="AREDN Radio Room",
-            telephone_number="sip:10.0.0.20",
+            telephone_number="10.0.0.20",
             dn=f"uid=static-002,{base_dn}",
             link="",
         ),
     ]
     return entries
-
-
-def _telephone_number(ip: str, link: str) -> str:
-    if link.lower().startswith("sip:"):
-        suffix = link[4:].replace("/", "")
-        return f"sip:{suffix}" if suffix else f"sip:{ip}"
-    return f"sip:{ip}"
 
 
 def _display_name(name: str) -> str:
@@ -56,15 +49,19 @@ def entries_from_services(services: Iterable[dict], base_dn: str) -> List[Direct
     for service in services:
         name = str(service.get("name", "")).strip()
         ip = str(service.get("ip", "")).strip()
+        telephone_number = str(service.get("telephone_number", "") or "").strip()
         link = str(service.get("link", "") or "").strip()
-        if not name or not ip:
+        if not name:
             continue
-        uid = stable_uid(ip, name)
+        if not telephone_number and not ip:
+            continue
+        uid_source = telephone_number or ip
+        uid = stable_uid(uid_source, name)
         results.append(
             DirectoryEntry(
                 uid=uid,
                 cn=_display_name(name),
-                telephone_number=_telephone_number(ip, link),
+                telephone_number=telephone_number or ip,
                 dn=f"uid={uid},{base_dn}",
                 link=link,
             )
