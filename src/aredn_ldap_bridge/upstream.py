@@ -30,7 +30,10 @@ class UpstreamClient:
                 filtered = []
                 for svc in services:
                     protocol = str(svc.get("protocol", "")).lower()
-                    if protocol != self._protocol_filter:
+                    name = str(svc.get("name", "")).lower()
+                    phone_tag = f"[{self._protocol_filter}]"
+                    is_phone_service = protocol == self._protocol_filter or phone_tag in name
+                    if not is_phone_service:
                         continue
 
                     link = str(svc.get("link", "") or "").strip()
@@ -49,11 +52,10 @@ class UpstreamClient:
                     normalized["telephone_number"] = telephone_number
                     filtered.append(normalized)
                 self._logger.info(
-                    "Upstream %s returned %s services (%s matched protocol=%s+sip-link)",
+                    "Upstream %s returned %s services (%s matched phone-service+sip-link)",
                     node,
                     len(services),
                     len(filtered),
-                    self._protocol_filter,
                 )
                 return filtered
             except (HTTPError, URLError, ValueError) as exc:
