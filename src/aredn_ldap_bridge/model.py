@@ -95,6 +95,7 @@ def entries_from_test_cases(csv_path: str, base_dn: str) -> List[DirectoryEntry]
             continue
         cn = row[0]
         telephone_number = row[1]
+        labeled_uri = row[2] if len(row) > 2 else ""
         if not cn or not telephone_number:
             continue
         uid = stable_uid(telephone_number, cn)
@@ -104,7 +105,7 @@ def entries_from_test_cases(csv_path: str, base_dn: str) -> List[DirectoryEntry]
                 cn=cn,
                 telephone_number=telephone_number,
                 dn=f"uid={uid},{base_dn}",
-                link="",
+                link=labeled_uri,
             )
         )
     return results
