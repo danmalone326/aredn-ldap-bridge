@@ -149,6 +149,7 @@ def _make_handler(config: Config, cache: LazyCache):
                         ("uid", [entry.uid]),
                         ("cn", [entry.cn]),
                         ("telephoneNumber", [entry.telephone_number]),
+                        ("labeledURI", [entry.link]),
                         ("objectClass", list(entry.object_classes)),
                     ]
                     entry_msg = build_search_result_entry(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import List
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
@@ -17,7 +18,7 @@ class UpstreamClient:
     def fetch_services(self) -> List[dict]:
         last_error: Exception | None = None
         for node in self._nodes:
-            url = f"http://{node}/a/sysinfo?services=1"
+            url = f"http://{node}/a/sysinfo?services=1&hosts=1"
             self._logger.info("Fetching upstream services from %s", url)
             try:
                 request = Request(url)
@@ -25,19 +26,51 @@ class UpstreamClient:
                     raw = response.read()
                 payload = json.loads(raw.decode("utf-8"))
                 services = list(payload.get("services", []) or [])
+                hosts = payload.get("hosts", []) or []
+                if isinstance(hosts, dict):
+                    hosts = list(hosts.values())
+                elif not isinstance(hosts, list):
+                    hosts = []
+                host_ip_map = _build_host_ip_map(hosts)
                 filtered = []
+                phone_candidates = 0
+                sip_candidates = 0
+                resolved_candidates = 0
                 for svc in services:
                     protocol = str(svc.get("protocol", "")).lower()
                     name = str(svc.get("name", "")).lower()
-                    tag = f"[{self._protocol_filter}]"
-                    if protocol == self._protocol_filter or tag in name:
-                        filtered.append(svc)
+                    phone_tag = f"[{self._protocol_filter}]"
+                    is_phone_service = protocol == self._protocol_filter or phone_tag in name
+                    if not is_phone_service:
+                        continue
+                    phone_candidates += 1
+
+                    link = str(svc.get("link", "") or "").strip()
+                    sip_target = _parse_sip_target(link)
+                    if sip_target is None:
+                        continue
+                    sip_candidates += 1
+
+                    host, port = sip_target
+                    host_ip = host_ip_map.get(host.lower()) or (_normalize_ip(host) if _is_ipv4(host) else None)
+                    if not host_ip:
+                        self._logger.debug("Skipping service with unresolved sip host host=%s link=%s", host, link)
+                        continue
+                    resolved_candidates += 1
+
+                    telephone_number = host_ip if port is None else f"{host_ip}:{port}"
+                    normalized = dict(svc)
+                    normalized["telephone_number"] = telephone_number
+                    filtered.append(normalized)
                 self._logger.info(
-                    "Upstream %s returned %s services (%s matched protocol=%s)",
+                    "Upstream %s returned %s services (%s phone candidates, %s sip-link candidates, %s host-resolved, %s final; hosts=%s)",
                     node,
                     len(services),
+                    phone_candidates,
+                    sip_candidates,
+                    resolved_candidates,
                     len(filtered),
-                    self._protocol_filter,
+                    len(host_ip_map),
                 )
                 return filtered
             except (HTTPError, URLError, ValueError) as exc:
@@ -48,3 +81,71 @@ class UpstreamClient:
         if last_error is not None:
             raise last_error
         return []
+
+
+def _build_host_ip_map(hosts: List[dict]) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for host in hosts:
+        name = str(host.get("name", "") or "").strip()
+        ip = _normalize_ip(str(host.get("ip", "") or "").strip())
+        if not name or not ip:
+            continue
+        lower_name = name.lower()
+        mapping[lower_name] = ip
+        if lower_name.endswith(".local.mesh"):
+            mapping[lower_name[: -len(".local.mesh")]] = ip
+    return mapping
+
+
+def _parse_sip_target(link: str) -> tuple[str, int | None] | None:
+    if not link.lower().startswith("sip:"):
+        return None
+
+    target = link[4:].strip()
+    while target.startswith("/"):
+        target = target[1:]
+    if not target:
+        return None
+
+    for marker in (";", "?", "/"):
+        marker_index = target.find(marker)
+        if marker_index >= 0:
+            target = target[:marker_index]
+    if not target:
+        return None
+
+    if "@" in target:
+        target = target.rsplit("@", 1)[1]
+    if not target:
+        return None
+
+    if target.startswith("["):
+        closing = target.find("]")
+        if closing < 0:
+            return None
+        host = target[1:closing].strip()
+        remainder = target[closing + 1 :]
+        if remainder.startswith(":"):
+            port_text = remainder[1:]
+            if not port_text.isdigit():
+                return None
+            return host, int(port_text)
+        return host, None
+
+    if ":" in target:
+        host, port_text = target.rsplit(":", 1)
+        host = host.strip()
+        port_text = port_text.strip()
+        if not host or not port_text.isdigit():
+            return None
+        return host, int(port_text)
+
+    return target.strip(), None
+
+
+def _is_ipv4(value: str) -> bool:
+    return re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){3}", value or "") is not None
+
+
+def _normalize_ip(value: str) -> str:
+    return value.strip()
